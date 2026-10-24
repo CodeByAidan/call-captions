@@ -2,5 +2,17 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "The Windows build stays on Python 3.12 until ctranslate2 ships wheels for newer versions.",
+      "matchDepNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "ctranslate2 is tied to the CUDA version of the cuBLAS that gpu.py downloads on Windows, which CI can't test without a GPU. Update both by hand.",
+      "matchPackageNames": ["ctranslate2"],
+      "enabled": false
+    }
   ]
 }

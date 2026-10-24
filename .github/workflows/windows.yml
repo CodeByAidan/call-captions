@@ -1,11 +1,12 @@
-# Builds the Windows installer. Runs on every push to main (download it from the run's
-# artifacts) and publishes a GitHub release when you push a tag like v1.0.0.
+# Builds the Windows installer. Runs on every push to main and every pull request (download
+# it from the run's artifacts) and publishes a GitHub release when you push a tag like v1.0.0.
 name: Windows installer
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -18,7 +19,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.15"
+          # ctranslate2 4.8.3 (pinned in requirements-windows.txt) has no wheels for newer Pythons.
+          python-version: "3.12"
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
