@@ -1,0 +1,10 @@
+# Windows. NVIDIA's cuBLAS isn't listed: the app downloads it on first run, and only on
+# PCs with an NVIDIA card (see gpu.py). If you bump ctranslate2 to a version built for a
+# newer CUDA, update gpu.WINDOWS_CUDA_WHEELS to match.
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+PySide6-Essentials==6.12.0
+numpy
+nvidia-ml-py
+comtypes
+psutil

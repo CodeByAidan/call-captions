@@ -1,0 +1,47 @@
+# Builds the Windows installer. Runs on every push to main (download it from the run's
+# artifacts) and publishes a GitHub release when you push a tag like v1.0.0.
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Start the Windows audio service (for the self-test)
+        run: |
+          Set-Service Audiosrv -StartupType Manual
+          Start-Service Audiosrv
+        continue-on-error: true
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.0.$env:GITHUB_RUN_NUMBER" }
+          ./packaging/windows/build.ps1 -Version $version -Python python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CallCaptions-Setup
+          path: dist/CallCaptions-Setup-*.exe
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CallCaptions-Setup-*.exe

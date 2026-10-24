@@ -1,0 +1,7 @@
+# Linux: uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+PySide6-Essentials
+numpy
+nvidia-ml-py
+nvidia-cublas-cu12
