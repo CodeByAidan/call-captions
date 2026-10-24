@@ -1,6 +1,6 @@
 # Call Captions
 
-<img width="1600" height="720" alt="image" src="https://github.com/user-attachments/assets/b791dd52-d10c-4d11-997b-a8753f0aad8a" />
+![A friend speaking German in a voice call, shown as English captions over a game](docs/preview.png)
 
 Live English captions for voice calls. It listens to Discord, translates whatever language
 your friends are speaking into English with Whisper, and shows it in a clean, translucent
@@ -73,6 +73,9 @@ powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Version 1.
 
 Both bundle the app with PyInstaller, run its self-test (`CallCaptions.exe --selftest`), then
 build `dist\CallCaptions-Setup-<version>.exe` with Inno Setup.
+
+The image at the top of this README is drawn by the app's own overlay code. To redraw it after
+changing the overlay, run `QT_QPA_PLATFORM=offscreen .venv/bin/python packaging/render_preview.py`.
 
 ## How it works
 
