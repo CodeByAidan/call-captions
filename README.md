@@ -1,5 +1,7 @@
 # Call Captions
 
+<img width="1600" height="720" alt="image" src="https://github.com/user-attachments/assets/b791dd52-d10c-4d11-997b-a8753f0aad8a" />
+
 Live English captions for voice calls. It listens to Discord, translates whatever language
 your friends are speaking into English with Whisper, and shows it in a clean, translucent
 overlay that fades away on its own. It uses your NVIDIA graphics card when you have one
