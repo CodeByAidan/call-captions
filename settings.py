@@ -6,6 +6,7 @@ import sys
 
 APP_NAME = "Call Captions"
 APP_ID = "CallCaptions"
+BUNDLE_ID = "io.github.codebyaidan.callcaptions"  # macOS app and login item
 
 DEFAULTS = {
     "source": "discord",     # "discord" or "all" (everything you hear)
@@ -22,6 +23,8 @@ def data_dir():
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
         path = os.path.join(base, APP_ID)
+    elif sys.platform == "darwin":
+        path = os.path.expanduser(f"~/Library/Application Support/{APP_NAME}")
     else:
         base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
         path = os.path.join(base, "call-captions")

@@ -3,3 +3,4 @@ __pycache__/
 .venv-win/
 build/
 dist/
+.venv-mac/

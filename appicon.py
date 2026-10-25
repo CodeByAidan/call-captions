@@ -1,10 +1,14 @@
 """The app's icon, drawn in code so it's crisp at every size and needs no image files."""
 
+import sys
+
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap
 
 
-def icon_pixmap(size):
+def icon_pixmap(size, template=False):
+    """The speech bubble. A template is plain black with see-through caption lines, the
+    form macOS wants for menu bar icons so it can tint them for light and dark mode."""
     s = size / 64
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.transparent)
@@ -18,10 +22,14 @@ def icon_pixmap(size):
     tail.lineTo(11 * s, 58 * s)
     tail.lineTo(30 * s, 44 * s)
     tail.closeSubpath()
-    gradient = QLinearGradient(0, 0, size, size)
-    gradient.setColorAt(0, QColor(92, 140, 255))
-    gradient.setColorAt(1, QColor(124, 92, 255))
-    p.fillPath(bubble.united(tail), gradient)
+    if template:
+        p.fillPath(bubble.united(tail), QColor(0, 0, 0))
+        p.setCompositionMode(QPainter.CompositionMode_Clear)
+    else:
+        gradient = QLinearGradient(0, 0, size, size)
+        gradient.setColorAt(0, QColor(92, 140, 255))
+        gradient.setColorAt(1, QColor(124, 92, 255))
+        p.fillPath(bubble.united(tail), gradient)
 
     # Two caption lines.
     p.setPen(Qt.NoPen)
@@ -36,4 +44,14 @@ def app_icon():
     icon = QIcon()
     for size in (16, 24, 32, 48, 64, 128, 256):
         icon.addPixmap(icon_pixmap(size))
+    return icon
+
+
+def tray_icon():
+    if sys.platform != "darwin":
+        return app_icon()
+    icon = QIcon()
+    for size in (16, 22, 32, 44):
+        icon.addPixmap(icon_pixmap(size, template=True))
+    icon.setIsMask(True)
     return icon

@@ -4,6 +4,7 @@ make_source() picks the right one for the platform:
   Linux    DiscordSource (just Discord, via `parec --monitor-stream`) or
            DeviceSource (everything on an output device, via its monitor)
   Windows  see audio_windows.py
+  macOS    see audio_mac.py
 FileSource plays an audio file in real time, for testing.
 """
 
@@ -27,6 +28,10 @@ def make_source(kind, on_chunk, on_status):
         from audio_windows import AppLoopbackSource, DeviceLoopbackSource
 
         return AppLoopbackSource(on_chunk, on_status) if kind == "discord" else DeviceLoopbackSource(on_chunk, on_status)
+    if sys.platform == "darwin":
+        from audio_mac import AppTapSource, SystemTapSource
+
+        return AppTapSource(on_chunk, on_status) if kind == "discord" else SystemTapSource(on_chunk, on_status)
     if kind == "discord":
         return DiscordSource(on_chunk, on_status)
     return DeviceSource(None if kind == "all" else kind, on_chunk, on_status)
