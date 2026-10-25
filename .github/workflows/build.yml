@@ -52,7 +52,7 @@ jobs:
           path: dist/CallCaptions-Setup-*.exe
 
   macos:
-    runs-on: macos-15  # Apple Silicon
+    runs-on: macos-26  # Apple Silicon
     steps:
       - uses: actions/checkout@v7
         with:
