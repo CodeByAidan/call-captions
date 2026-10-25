@@ -1,0 +1,80 @@
+# Builds the Windows installer and the macOS disk image. Runs on every push to main and every
+# pull request (download them from the run's artifacts), and publishes a GitHub release with
+# both when you push a tag like v1.0.0.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Python 3.12: ctranslate2 4.8.3 (pinned in the requirements files) has no wheels for newer ones.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Start the Windows audio service (for the self-test)
+        run: |
+          Set-Service Audiosrv -StartupType Manual
+          Start-Service Audiosrv
+        continue-on-error: true
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.0.$env:GITHUB_RUN_NUMBER" }
+          ./packaging/windows/build.ps1 -Version $version -Python python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CallCaptions-Windows
+          path: dist/CallCaptions-Setup-*.exe
+
+  macos:
+    runs-on: macos-15  # Apple Silicon
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.$GITHUB_RUN_NUMBER"; fi
+          ./packaging/macos/build.sh "$version" python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CallCaptions-macOS
+          path: dist/CallCaptions-*-macOS.dmg
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

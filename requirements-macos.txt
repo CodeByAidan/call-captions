@@ -1,0 +1,12 @@
+# macOS (Apple Silicon, 14.2 or newer). After installing these, also run:
+#   pip install --no-deps mlx-whisper==0.4.3
+# mlx-whisper's declared dependencies (PyTorch, numba, scipy) are only for model conversion
+# and long-form transcription, which this app doesn't use (see whisper_mlx.py).
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+PySide6-Essentials==6.12.0
+numpy
+mlx
+tiktoken
+pyobjc-core
+pyobjc-framework-Cocoa

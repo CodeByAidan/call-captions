@@ -114,7 +114,7 @@ class Translator:
         try:
             self._model = self._load(plan)
         except Exception as e:
-            if plan.device != "cuda":
+            if plan.device == "cpu":
                 raise
             print(f"GPU unavailable ({e}); falling back to CPU", file=sys.stderr)
             self.on_status("GPU didn't work — using the CPU (slower)")
@@ -125,36 +125,51 @@ class Translator:
         print(f"· Running on {plan.describe()} ({plan.compute_type})", flush=True)
 
     def _load(self, plan):
-        from faster_whisper import WhisperModel
+        if plan.device == "mlx":
+            from whisper_mlx import MODEL_REPOS, MlxWhisperModel
 
-        path = self._fetch(plan.model)
-        self.on_status("Loading translation model…", True)
-        model = WhisperModel(path, device=plan.device, compute_type=plan.compute_type)
+            path = self._fetch(plan.model, MODEL_REPOS[plan.model])
+            self.on_status("Loading translation model…", True)
+            model = MlxWhisperModel(path)
+        else:
+            from faster_whisper import WhisperModel
+
+            path = self._fetch(plan.model)
+            self.on_status("Loading translation model…", True)
+            model = WhisperModel(path, device=plan.device, compute_type=plan.compute_type)
         model.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), task="translate", language="en", beam_size=1)
         return model
 
-    def _fetch(self, name):
-        from faster_whisper.utils import download_model
+    def _fetch(self, name, mlx_repo=None):
+        from faster_whisper.utils import _MODELS, download_model
+        from huggingface_hub import snapshot_download
 
         root = gpu.models_dir()
+
+        def fetch(local_only):
+            if mlx_repo:
+                return snapshot_download(mlx_repo, cache_dir=root, local_files_only=local_only,
+                                         allow_patterns=["config.json", "weights.*"])
+            return download_model(name, cache_dir=root, local_files_only=local_only)
+
         try:
-            return download_model(name, cache_dir=root, local_files_only=True)
+            return fetch(local_only=True)
         except Exception:
             pass
         size = gpu.MODEL_SIZES_GB.get(name)
         self.on_status(f"Downloading the speech model{f' ({size:g} GB, first run only)' if size else ''}…", True)
         done = threading.Event()
-        threading.Thread(target=self._report_download, args=(name, root, size, done), daemon=True).start()
+        repo = mlx_repo or _MODELS.get(name, name)
+        threading.Thread(target=self._report_download, args=(repo, root, size, done), daemon=True).start()
         try:
-            return download_model(name, cache_dir=root)
+            return fetch(local_only=False)
         finally:
             done.set()
 
-    def _report_download(self, name, root, size, done):
-        from faster_whisper.utils import _MODELS
+    def _report_download(self, repo, root, size, done):
         from huggingface_hub.constants import HF_HUB_CACHE
 
-        folder = os.path.join(root or HF_HUB_CACHE, "models--" + _MODELS.get(name, name).replace("/", "--"))
+        folder = os.path.join(root or HF_HUB_CACHE, "models--" + repo.replace("/", "--"))
         while not done.wait(1.0):
             got = 0
             for directory, _, files in os.walk(folder):

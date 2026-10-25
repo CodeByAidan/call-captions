@@ -13,6 +13,7 @@ overlay. Settings live in the tray icon's menu; these flags override them for on
 
 import argparse
 import os
+import plistlib
 import signal
 import sys
 import time
@@ -20,7 +21,7 @@ import traceback
 
 import gpu
 import settings
-from settings import APP_ID, APP_NAME, data_dir
+from settings import APP_ID, APP_NAME, BUNDLE_ID, data_dir
 
 SCALES = {"small": 0.82, "medium": 1.0, "large": 1.25}
 OPACITIES = {"light": 0.4, "medium": 0.62, "dark": 0.82}
@@ -34,6 +35,8 @@ LANGUAGES = [
 MODELS = [("Automatic (recommended)", "auto"), ("Best — large-v3", "large-v3"),
           ("Balanced — medium", "medium"), ("Fastest — small", "small")]
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+LAUNCH_AGENT = os.path.expanduser(f"~/Library/LaunchAgents/{BUNDLE_ID}.plist")
+TRAY = "menu bar" if sys.platform == "darwin" else "system tray"
 
 
 def parse_args():
@@ -61,8 +64,10 @@ def log_path():
 
 
 def log_to_file_if_windowless():
-    """A windowed .exe has no console, so keep what would be printed in a log file."""
-    if sys.stdout is not None and sys.stderr is not None:
+    """A windowed app has no console, so keep what would be printed in a log file."""
+    # Windows gives a windowed .exe no stdout at all; a Mac app's goes nowhere.
+    mac_app = sys.platform == "darwin" and getattr(sys, "frozen", False) and not sys.stdout.isatty()
+    if sys.stdout is not None and sys.stderr is not None and not mac_app:
         return False
     path = log_path()
     if os.path.exists(path) and os.path.getsize(path) > 5_000_000:
@@ -73,6 +78,8 @@ def log_to_file_if_windowless():
 
 
 def autostart_enabled():
+    if sys.platform == "darwin":
+        return os.path.exists(LAUNCH_AGENT)
     import winreg
 
     try:
@@ -84,6 +91,17 @@ def autostart_enabled():
 
 
 def set_autostart(enabled):
+    if sys.platform == "darwin":
+        if enabled:
+            # sys.executable is ".../Call Captions.app/Contents/MacOS/CallCaptions".
+            app = os.path.abspath(os.path.join(os.path.dirname(sys.executable), "..", ".."))
+            os.makedirs(os.path.dirname(LAUNCH_AGENT), exist_ok=True)
+            with open(LAUNCH_AGENT, "wb") as f:
+                plistlib.dump({"Label": BUNDLE_ID, "ProgramArguments": ["/usr/bin/open", "-a", app],
+                               "RunAtLoad": True}, f)
+        elif os.path.exists(LAUNCH_AGENT):
+            os.remove(LAUNCH_AGENT)
+        return
     import winreg
 
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
@@ -101,7 +119,7 @@ def run_app(args, logging_to_file):
     from PySide6.QtGui import QActionGroup, QDesktopServices, QGuiApplication
     from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-    from appicon import app_icon
+    from appicon import app_icon, tray_icon
     from audio import FileSource, make_source
     from overlay import CaptionOverlay
     from translator import Translator
@@ -110,10 +128,16 @@ def run_app(args, logging_to_file):
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
     app.setWindowIcon(app_icon())
+    if sys.platform == "darwin":
+        # A menu bar app, so no Dock icon. (The packaged app's Info.plist says so too.)
+        import AppKit
+
+        AppKit.NSApplication.sharedApplication().setActivationPolicy_(
+            AppKit.NSApplicationActivationPolicyAccessory)
 
     lock = QLockFile(os.path.join(data_dir(), "running.lock"))
     if not args.file and not lock.tryLock(100):
-        QMessageBox.information(None, APP_NAME, f"{APP_NAME} is already running. Its icon is in the system tray.")
+        QMessageBox.information(None, APP_NAME, f"{APP_NAME} is already running. Its icon is in the {TRAY}.")
         return 0
 
     prefs = settings.load()
@@ -197,7 +221,7 @@ def run_app(args, logging_to_file):
             apply_look()
 
     if QSystemTrayIcon.isSystemTrayAvailable():
-        tray = QSystemTrayIcon(app_icon(), app)
+        tray = QSystemTrayIcon(tray_icon(), app)
         tray.setToolTip(APP_NAME)
         menu = QMenu()
         submenus = []  # keep the Python wrappers alive
@@ -243,8 +267,8 @@ def run_app(args, logging_to_file):
         add_choice("Background", "background", [("Light", "light"), ("Medium", "medium"), ("Dark", "dark")])
         menu.addAction("Clear captions", overlay.clear)
         menu.addSeparator()
-        if sys.platform == "win32" and getattr(sys, "frozen", False):
-            autostart = menu.addAction("Start with Windows")
+        if sys.platform in ("win32", "darwin") and getattr(sys, "frozen", False):
+            autostart = menu.addAction("Open at login" if sys.platform == "darwin" else "Start with Windows")
             autostart.setCheckable(True)
             autostart.setChecked(autostart_enabled())
             autostart.toggled.connect(set_autostart)
@@ -254,8 +278,9 @@ def run_app(args, logging_to_file):
         tray.setContextMenu(menu)
         tray.show()
         if not prefs["welcomed"]:
+            click = "Click" if sys.platform == "darwin" else "Right-click"
             tray.showMessage(APP_NAME, "Captions appear near the bottom of your screen. "
-                                       "Right-click this icon for settings.", app_icon(), 8000)
+                                       f"{click} this icon for settings.", app_icon(), 8000)
             prefs["welcomed"] = True
             settings.save(prefs)
 
@@ -270,8 +295,9 @@ def run_app(args, logging_to_file):
 
 
 def selftest():
-    """Checks a build works: imports, overlay drawing, a tiny model on the CPU, and (on
-    Windows) the audio capture plumbing. Used by the Windows build before packaging."""
+    """Checks a build works: imports, overlay drawing, a tiny model on the CPU, and the
+    platform's audio capture plumbing (and, on Macs, the Apple GPU engine). The builds run
+    it before packaging."""
     import numpy as np
 
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -339,6 +365,25 @@ def selftest():
 
         return audio_windows.selftest()
 
+    def mac_audio():
+        import audio_mac
+
+        return audio_mac.selftest()
+
+    def apple_gpu():
+        import whisper_mlx
+        from huggingface_hub import snapshot_download
+
+        for name in whisper_mlx.SUBMODULES:  # bundled, and importable without numba/scipy
+            whisper_mlx._submodule(name)
+        if not whisper_mlx.available():
+            return "MLX imports fine; no Metal GPU on this machine"
+        path = snapshot_download(whisper_mlx.MODEL_REPOS["tiny"], cache_dir=os.path.join(data_dir(), "models"),
+                                 allow_patterns=["config.json", "weights.*"])
+        noise = (np.random.default_rng(0).standard_normal(32000) * 0.01).astype(np.float32)
+        _, info = whisper_mlx.MlxWhisperModel(path).transcribe(noise, task="translate")
+        return f"tiny model ran on the Apple GPU (heard {info.language})"
+
     check("imports", imports)
     check("resampler", resampler)
     check("gpu detection", lambda: str(gpu.make_plan()))
@@ -346,6 +391,9 @@ def selftest():
     check("whisper", whisper)
     if sys.platform == "win32":
         check("windows audio", windows_audio)
+    if sys.platform == "darwin":
+        check("apple gpu", apple_gpu)
+        check("mac audio", mac_audio)
     print("SELFTEST " + (f"FAILED: {', '.join(failures)}" if failures else "OK"), flush=True)
     return 1 if failures else 0
 

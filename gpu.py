@@ -2,7 +2,8 @@
 
 Any NVIDIA card that CUDA 12 supports (GTX 900 series and newer) is used automatically:
 the model size follows its memory, and the number format follows what the card can do.
-Without one, Whisper runs on the CPU with a smaller model.
+On Apple Silicon Macs, Whisper runs on the GPU through MLX (whisper_mlx.py), sized by the
+Mac's memory. Without either, it runs on the CPU with a smaller model.
 
 CTranslate2 needs only cuBLAS for Whisper (it runs convolutions without cuDNN), which comes
 from NVIDIA's PyPI wheel. On Linux it's installed into the venv; on Windows it's downloaded
@@ -38,7 +39,7 @@ _dll_dirs = []  # handles from os.add_dll_directory must stay alive
 
 @dataclass
 class Plan:
-    device: str          # "cuda" or "cpu"
+    device: str          # "cuda", "mlx" (Apple GPU) or "cpu"
     compute_type: str
     model: str
     gpu_name: str = None
@@ -85,6 +86,8 @@ def model_for_memory(gb):
 
 
 def make_plan(model_choice="auto", device_choice="auto"):
+    if sys.platform == "darwin":
+        return _mac_plan(model_choice, device_choice)
     import ctranslate2
 
     if device_choice != "cpu" and ctranslate2.get_cuda_device_count() > 0:
@@ -101,9 +104,30 @@ def cpu_plan(model_choice="auto"):
 
 
 def models_dir():
-    # On Linux, share the usual Hugging Face cache; on Windows, keep models with the app
-    # so uninstalling cleans them up.
-    return os.path.join(data_dir(), "models") if sys.platform == "win32" else None
+    # On Linux, share the usual Hugging Face cache; on Windows and macOS, keep models with
+    # the app's data so uninstalling cleans them up.
+    return os.path.join(data_dir(), "models") if sys.platform in ("win32", "darwin") else None
+
+
+# -- macOS -------------------------------------------------------------------------
+
+def _mac_plan(model_choice, device_choice):
+    import whisper_mlx
+
+    if device_choice != "cpu" and whisper_mlx.available():
+        # Apple GPUs share the Mac's memory. large-v3 takes ~3 GB, so it needs room to spare.
+        memory = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+        auto = "large-v3" if memory >= 15 else "medium" if memory >= 7 else "small"
+        return Plan("mlx", "float16", auto if model_choice == "auto" else model_choice, f"{_mac_chip()} GPU")
+    return cpu_plan(model_choice)
+
+
+def _mac_chip():
+    try:
+        return subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                              capture_output=True, text=True, timeout=5).stdout.strip() or "Apple"
+    except Exception:
+        return "Apple"
 
 
 # -- Linux -------------------------------------------------------------------------

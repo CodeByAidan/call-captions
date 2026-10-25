@@ -68,6 +68,8 @@ class CaptionOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        if sys.platform == "darwin":
+            self.setAttribute(Qt.WA_MacAlwaysShowToolWindow)  # don't hide when another app is active
         self.screen_ = screen or QGuiApplication.primaryScreen()
         self.max_lines = max_lines
         self.lines = []
@@ -85,7 +87,7 @@ class CaptionOverlay(QWidget):
         geo = self.screen_.geometry()
         size = font_size or round(max(18, min(40, geo.height() * 0.024)) * scale)
         family = next((f for f in FONT_FAMILIES if f in QFontDatabase.families()), None)
-        self.caption_font = QFont(family) if family else QFont()
+        self.caption_font = QFont(family) if family else QFontDatabase.systemFont(QFontDatabase.GeneralFont)
         self.caption_font.setPixelSize(size)
         self.caption_font.setWeight(QFont.Weight.Medium)
         self.status_font = QFont(self.caption_font)
@@ -176,6 +178,30 @@ class CaptionOverlay(QWidget):
             if line.kind == "status":
                 line.w += fm.height() * 0.75  # room for the dot
             line._measured = (line.text, line.kind)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if sys.platform == "darwin":
+            self._float_over_fullscreen_apps()
+
+    def _float_over_fullscreen_apps(self):
+        # macOS gives fullscreen apps a Space of their own; join every Space, above them.
+        try:
+            from ctypes import c_void_p
+
+            import AppKit
+            import objc
+
+            window = objc.objc_object(c_void_p=c_void_p(int(self.winId()))).window()
+            window.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+                                          | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
+                                          | AppKit.NSWindowCollectionBehaviorStationary
+                                          | AppKit.NSWindowCollectionBehaviorIgnoresCycle)
+            window.setLevel_(AppKit.NSStatusWindowLevel)
+            window.setHasShadow_(False)
+            window.setIgnoresMouseEvents_(True)
+        except Exception as e:
+            print(f"Couldn't raise the overlay above fullscreen apps: {e}", file=sys.stderr)
 
     def _keep_on_top(self):
         import ctypes

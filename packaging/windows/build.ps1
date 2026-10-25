@@ -20,7 +20,7 @@ $py = Join-Path $root ".venv-win\Scripts\python.exe"
 if ($LASTEXITCODE) { throw "pip install failed" }
 
 Write-Host "== Bundling the app"
-& $py -m PyInstaller packaging\windows\CallCaptions.spec --noconfirm --clean --distpath dist --workpath build
+& $py -m PyInstaller packaging\CallCaptions.spec --noconfirm --clean --distpath dist --workpath build
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
 Write-Host "== Self-test of the bundled app"
