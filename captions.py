@@ -12,6 +12,7 @@ overlay. Settings live in the tray icon's menu; these flags override them for on
 """
 
 import argparse
+import multiprocessing
 import os
 import plistlib
 import signal
@@ -422,4 +423,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # In the bundled app, libraries that use multiprocessing (tqdm, during model downloads)
+    # re-launch this executable for their helper process; this makes it act as that helper.
+    multiprocessing.freeze_support()
     main()

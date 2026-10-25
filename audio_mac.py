@@ -179,7 +179,8 @@ def _has_permission(tap):
 class _Tap:
     """A mono tap on some processes (or all of them), wrapped in a private aggregate device."""
 
-    def __init__(self, processes=None):
+    def __init__(self, processes=None, stages=None):
+        note = stages.append if stages is not None else lambda stage: None  # for the self-test
         self.tap, self.device, self.proc_id = c_uint32(0), c_uint32(0), c_void_p()
         TapDescription = objc.lookUpClass("CATapDescription")
         if processes is None:
@@ -192,9 +193,11 @@ class _Tap:
         description.setName_("Call Captions")
         self.description = description
 
+        note("creating the tap")
         self.tap = c_uint32()
         _check(_CreateProcessTap(objc.pyobjc_id(description), byref(self.tap)), "creating the audio tap")
         try:
+            note("reading the tap's format")
             fmt = _get(self.tap.value, TAP_FORMAT, StreamDescription())
             if not fmt.mFormatFlags & FORMAT_IS_FLOAT or fmt.mBitsPerChannel != 32:
                 raise OSError(0, f"unexpected tap format (flags {fmt.mFormatFlags:#x}, {fmt.mBitsPerChannel} bit)")
@@ -204,9 +207,11 @@ class _Tap:
                 "taps": [{"uid": description.UUID().UUIDString(), "drift": True}],
                 "tapautostart": False, "private": True,
             })
+            note("creating the capture device")
             self.device = c_uint32()
             _check(_CreateAggregateDevice(objc.pyobjc_id(properties), byref(self.device)),
                    "creating the capture device")
+            note("reading the sample rate")
             try:
                 self.rate = _get(self.device.value, NOMINAL_SAMPLE_RATE, c_double()).value
             except OSError:
@@ -307,12 +312,14 @@ class _TapSource:
                 self._stop.wait(2.0)
 
     def _capture(self, target):
+        # macOS can ask for permission while the tap is being created or started, and
+        # waits for an answer, so say so first.
+        if not _TapSource.asked_permission:
+            self.on_status("If macOS asks, allow Call Captions to record audio", True)
+            _TapSource.asked_permission = True
         tap = self.open(target)
         incoming = queue.Queue()
         try:
-            if not _TapSource.asked_permission:
-                self.on_status("If macOS asks, allow Call Captions to record audio", True)
-                _TapSource.asked_permission = True
             tap.start(incoming.put)
             if not tap.has_permission():
                 raise PermissionError
@@ -375,31 +382,38 @@ class SystemTapSource(_TapSource):
 
 
 def selftest():
-    """Builds a tap and its capture device without starting it (starting it would ask for
-    permission). Returns a report; raises if the plumbing is broken. Missing permission
-    isn't a failure: a build machine can't grant it."""
+    """Checks the Core Audio plumbing. Returns a report; raises if it's broken. Missing
+    permission isn't a failure: a build machine can't grant it."""
     if not supported():
         raise RuntimeError(f"needs macOS 14.2 or newer (this is {platform.mac_ver()[0]})")
-    report, errors = [], []
+
+    # These need no permission, so they must work.
+    discord = find_discord()
+    report = [f"{len(_process_objects())} audio processes, Discord {'found' if discord else 'not running'}"]
+    description = objc.lookUpClass("CATapDescription").alloc().initStereoGlobalTapButExcludeProcesses_(NSArray.array())
+    if description is None or description.UUID() is None:
+        raise RuntimeError("couldn't build a tap description")
+
+    # Creating a tap can show macOS's permission prompt and wait for an answer.
+    stages, errors = [], []
 
     def run():
         try:
-            tap = _Tap(None)
+            tap = _Tap(None, stages=stages)
             try:
                 report.append(f"tap ok ({tap.rate:.0f} Hz, {tap.channels} ch)")
                 report.append("permission granted" if tap.has_permission() else "no recording permission yet")
             finally:
                 tap.close()
-            discord = find_discord()
-            report.append(f"{len(_process_objects())} audio processes, Discord {'found' if discord else 'not running'}")
         except Exception as e:
             errors.append(e)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
     thread.join(30)
-    if thread.is_alive():
-        raise TimeoutError("Core Audio didn't answer within 30 s")
     if errors:
-        raise RuntimeError("; ".join(report)) from errors[0]
+        raise RuntimeError(f"{'; '.join(report)}; failed after: {', '.join(stages) or 'nothing'}") from errors[0]
+    if thread.is_alive():
+        report.append(f"tap creation is waiting after '{stages[-1] if stages else 'start'}', most likely for "
+                      "the recording-permission prompt, which a build machine can't answer")
     return "; ".join(report)
