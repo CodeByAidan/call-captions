@@ -149,7 +149,11 @@ _bundle_ids = {}
 def find_discord():
     """(process objects, client name) for Discord's audio processes, or None."""
     found, name = [], None
-    for obj in _process_objects():
+    objects = _process_objects()
+    # Forget processes that have gone, so a reused object ID gets looked up again.
+    for gone in set(_bundle_ids) - set(objects):
+        del _bundle_ids[gone]
+    for obj in objects:
         if obj not in _bundle_ids:
             _bundle_ids[obj] = _get_string(obj, PROCESS_BUNDLE_ID) or ""
         bundle = _bundle_ids[obj]
@@ -372,10 +376,11 @@ class SystemTapSource(_TapSource):
 
 def selftest():
     """Builds a tap and its capture device without starting it (starting it would ask for
-    permission). Returns a report."""
+    permission). Returns a report; raises if the plumbing is broken. Missing permission
+    isn't a failure: a build machine can't grant it."""
     if not supported():
-        return f"needs macOS 14.2 or newer (this is {platform.mac_ver()[0]})"
-    report = []
+        raise RuntimeError(f"needs macOS 14.2 or newer (this is {platform.mac_ver()[0]})")
+    report, errors = [], []
 
     def run():
         try:
@@ -388,9 +393,13 @@ def selftest():
             discord = find_discord()
             report.append(f"{len(_process_objects())} audio processes, Discord {'found' if discord else 'not running'}")
         except Exception as e:
-            report.append(f"error: {e!r}")
+            errors.append(e)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
     thread.join(30)
-    return "; ".join(report) or "timed out"
+    if thread.is_alive():
+        raise TimeoutError("Core Audio didn't answer within 30 s")
+    if errors:
+        raise RuntimeError("; ".join(report)) from errors[0]
+    return "; ".join(report)

@@ -82,6 +82,7 @@ class Translator:
         self._queue = queue.Queue()
         self._model = None
         self._pending_model = None
+        self._flush = False
         self._sticky_language = None
 
     def feed(self, chunk):
@@ -97,6 +98,10 @@ class Translator:
 
     def set_model(self, choice):
         self._pending_model = choice  # picked up by the worker between utterances
+
+    def flush(self):
+        """Forget queued audio and any half-heard utterance (after switching sources)."""
+        self._flush = True  # picked up by the worker
 
     # -- model ---------------------------------------------------------------
 
@@ -236,6 +241,13 @@ class Translator:
         while True:
             if self._pending_model is not None:
                 self._switch_model()
+            if self._flush:
+                self._flush = False
+                while not self._queue.empty():
+                    self._queue.get_nowait()
+                if self._in_speech:
+                    self.on_final(self._uid, "", None)
+                self._reset()
             try:
                 chunk = self._queue.get(timeout=0.25)
             except queue.Empty:

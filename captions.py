@@ -46,7 +46,8 @@ def parse_args():
     ap.add_argument("--file", help="translate an audio file instead of live audio")
     ap.add_argument("--lang", help="spoken language code (e.g. es, ja, ru); auto-detected if omitted")
     ap.add_argument("--model", help="large-v3, medium or small (default: picked for your GPU)")
-    ap.add_argument("--device", default="auto", choices=("auto", "cuda", "cpu"))
+    ap.add_argument("--device", default="auto", choices=("auto", "cuda", "cpu"),
+                    help="cuda: use the GPU (NVIDIA, or the Apple GPU on a Mac); cpu: never use it")
     ap.add_argument("--position", choices=("bottom", "top"))
     ap.add_argument("--screen", type=int, help="monitor number (0 = first); defaults to the primary one")
     ap.add_argument("--font-size", type=int, help="caption text size in pixels")
@@ -187,16 +188,24 @@ def run_app(args, logging_to_file):
                             on_final=on_final, on_status=on_status,
                             on_plan=lambda plan: bridge.plan.emit(plan.describe()))
 
-    state = {"source": None, "ready": False}
+    state = {"source": None, "ready": False, "generation": 0}
 
     def start_source():
         state["ready"] = True
+        state["generation"] += 1
+        generation = state["generation"]
         if state["source"]:
             state["source"].stop()
+            translator.flush()  # drop audio the old source already queued
+
+        def feed(chunk):  # an old source can deliver a few more chunks before it notices
+            if state["generation"] == generation:
+                translator.feed(chunk)
+
         if args.file:
-            state["source"] = FileSource(args.file, translator.feed, on_status, on_end=bridge.quit.emit)
+            state["source"] = FileSource(args.file, feed, on_status, on_end=bridge.quit.emit)
         else:
-            state["source"] = make_source(current["source"], translator.feed, on_status)
+            state["source"] = make_source(current["source"], feed, on_status)
         state["source"].start()
 
     bridge.ready.connect(start_source)

@@ -14,11 +14,18 @@ env:
   # Python 3.12: ctranslate2 4.8.3 (pinned in the requirements files) has no wheels for newer ones.
   PYTHON_VERSION: "3.12"
 
+# Builds run code from pull requests, so they only get to read the repo. The release job,
+# which only runs for tags, asks for more.
+permissions:
+  contents: read
+
 jobs:
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -48,6 +55,8 @@ jobs:
     runs-on: macos-15  # Apple Silicon
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -75,6 +84,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      # Pinned to a commit: this step can write releases, so a moved tag mustn't change it.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           files: dist/*

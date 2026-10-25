@@ -181,7 +181,8 @@ class CaptionOverlay(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if sys.platform == "darwin":
+        # Only a real on-screen window has an NSView behind its winId (not "offscreen").
+        if sys.platform == "darwin" and QGuiApplication.platformName() == "cocoa":
             self._float_over_fullscreen_apps()
 
     def _float_over_fullscreen_apps(self):
