@@ -1,5 +1,7 @@
 # Call Captions
 
+[![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+
 ![A friend speaking German in a voice call, shown as English captions over a game](docs/preview.png)
 
 Live English captions for voice calls. It listens to Discord, translates whatever language
