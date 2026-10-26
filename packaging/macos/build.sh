@@ -12,13 +12,16 @@ py=.venv-mac/bin/python
 "$py" -m pip install --upgrade pip --quiet
 "$py" -m pip install -r requirements-macos.txt "pyinstaller>=6.11" --quiet
 "$py" -m pip install --no-deps mlx-whisper==0.4.3 --quiet
-# mlx ships a wheel per macOS version and pip picks the one for this Mac's version, which won't
-# load on older ones. Swap in the macOS 14 wheel so the app runs everywhere it says it does.
-mlx_version="$("$py" -m pip show mlx | awk '/^Version:/ {print $2}')"
-rm -rf build/mlx-wheel
-"$py" -m pip download "mlx==$mlx_version" --no-deps --only-binary=:all: \
-    --platform macosx_14_0_arm64 --dest build/mlx-wheel --quiet
-"$py" -m pip install --force-reinstall --no-deps build/mlx-wheel/*.whl --quiet
+# mlx and mlx-metal (its GPU library and Metal kernels) ship a wheel per macOS version, and pip
+# picks the one for this Mac's version, which won't load on older ones. Swap in the macOS 14
+# wheels so the app runs everywhere it says it does.
+rm -rf build/mlx-wheels
+for pkg in mlx mlx-metal; do
+    pkg_version="$("$py" -m pip show "$pkg" | awk '/^Version:/ {print $2}')"
+    "$py" -m pip download "$pkg==$pkg_version" --no-deps --only-binary=:all: \
+        --platform macosx_14_0_arm64 --dest build/mlx-wheels --quiet
+done
+"$py" -m pip install --force-reinstall --no-deps build/mlx-wheels/*.whl --quiet
 
 echo "== Bundling the app"
 APP_VERSION="$version" "$py" -m PyInstaller packaging/CallCaptions.spec --noconfirm --clean \
