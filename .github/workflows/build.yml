@@ -72,9 +72,32 @@ jobs:
           name: CallCaptions-macOS
           path: dist/CallCaptions-*-macOS.dmg
 
+  # The Mac app is built on the newest macOS but has to run on older ones too, so run its
+  # self-test from the disk image on an older macOS before anything is released.
+  macos-test:
+    needs: macos
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: CallCaptions-macOS
+
+      - name: Self-test the app from the disk image
+        run: |
+          sw_vers
+          hdiutil attach CallCaptions-*-macOS.dmg -mountpoint "$RUNNER_TEMP/dmg" -nobrowse
+          status=0
+          "$RUNNER_TEMP/dmg/Call Captions.app/Contents/MacOS/CallCaptions" --selftest || status=$?
+          cat "$HOME/Library/Application Support/Call Captions/captions.log" || true
+          exit "$status"
+
   release:
     if: github.ref_type == 'tag'
-    needs: [windows, macos]
+    needs: [windows, macos, macos-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
