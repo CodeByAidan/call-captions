@@ -4,6 +4,7 @@
 set -euo pipefail
 version="${1:-1.0.0}"
 python="${2:-python3.12}"
+min_macos=14.2  # LSMinimumSystemVersion in packaging/CallCaptions.spec
 cd "$(dirname "$0")/../.."
 
 echo "== Creating build environment"
@@ -20,6 +21,21 @@ app="dist/Call Captions.app"
 # Apple Silicon only runs signed code. Without an Apple Developer ID this is an ad-hoc
 # signature, so people have to approve the app once (see the README).
 codesign --force --deep --sign - "$app"
+
+echo "== Checking every binary runs on macOS $min_macos"
+too_new=0
+while IFS= read -r -d '' f; do
+    file -b "$f" | grep -q Mach-O || continue
+    # LC_BUILD_VERSION lists "minos", the older LC_VERSION_MIN_MACOSX lists "version".
+    for v in $(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b=1} b && $1 == "minos" {print $2; b=0}
+                                    /LC_VERSION_MIN_MACOSX/ {m=1} m && $1 == "version" {print $2; m=0}'); do
+        if [ "$(printf '%s\n' "$v" "$min_macos" | sort -V | tail -n1)" != "$min_macos" ]; then
+            echo "Needs macOS $v: ${f#"$app/"}"
+            too_new=1
+        fi
+    done
+done < <(find "$app" -type f \( -name '*.so' -o -name '*.dylib' -o -perm -u+x \) -print0)
+[ "$too_new" -eq 0 ] || { echo "Some binaries need a newer macOS than $min_macos"; exit 1; }
 
 echo "== Self-test of the bundled app"
 log="$HOME/Library/Application Support/Call Captions/captions.log"
