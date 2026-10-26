@@ -46,7 +46,7 @@ jobs:
           $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.0.$env:GITHUB_RUN_NUMBER" }
           ./packaging/windows/build.ps1 -Version $version -Python python
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CallCaptions-Windows
           path: dist/CallCaptions-Setup-*.exe
@@ -67,7 +67,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.$GITHUB_RUN_NUMBER"; fi
           ./packaging/macos/build.sh "$version" python
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CallCaptions-macOS
           path: dist/CallCaptions-*-macOS.dmg
@@ -79,7 +79,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
