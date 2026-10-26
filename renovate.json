@@ -13,6 +13,12 @@
       "description": "ctranslate2 is tied to the CUDA version of the cuBLAS that gpu.py downloads on Windows, which CI can't test without a GPU. Update both by hand.",
       "matchPackageNames": ["ctranslate2"],
       "enabled": false
+    },
+    {
+      "description": "macos-test in build.yml runs the app on an older macOS than the build on purpose, to catch dependencies that only work on the build machine's macOS. When GitHub retires macos-15, move it to the oldest runner left by hand.",
+      "matchDepNames": ["macos"],
+      "matchCurrentValue": "15",
+      "enabled": false
     }
   ]
 }
